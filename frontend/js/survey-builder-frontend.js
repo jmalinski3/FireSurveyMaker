@@ -138,14 +138,14 @@
 				description:        (document.getElementById('fsm-fe-description') || {}).value || '',
 				status:             (document.getElementById('fsm-fe-status')      || {}).value || 'draft',
 				results_visibility: (document.getElementById('fsm-fe-visibility')  || {}).value || 'after_submit',
-				start_date:         startRaw ? startRaw.replace('T', ' ') : null,
-				end_date:           endRaw   ? endRaw.replace('T', ' ')   : null,
 				questions:          questions.map((q, i) => ({
 					...q,
 					sort_order: i,
 					options: (q.options || []).filter(o => String(o).trim()),
 				})),
 			};
+			if (startRaw) payload.start_date = startRaw.replace('T', ' ');
+			if (endRaw)   payload.end_date   = endRaw.replace('T', ' ');
 
 			try {
 				const resp = await fetch(restUrl + 'surveys', {
