@@ -1,0 +1,24 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "fire-survey-maker/survey",
+	"version": "1.0.0",
+	"title": "FireSurveyMaker Survey",
+	"category": "widgets",
+	"icon": "feedback",
+	"description": "Embed a survey in any post or page.",
+	"keywords": ["survey", "form", "poll"],
+	"textdomain": "fire-survey-maker",
+	"attributes": {
+		"surveyId": {
+			"type": "number",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": ["wide", "full"]
+	},
+	"editorScript": "file:../build/index.js",
+	"render": "file:./render.php"
+}
