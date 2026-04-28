@@ -43,20 +43,34 @@ class FSM_Frontend {
 			'fsm-survey-form',
 			'fsmFrontend',
 			array(
-				'restUrl'   => rest_url( 'fsm/v1/' ),
-				'nonce'     => wp_create_nonce( 'wp_rest' ),
-				'loginUrl'  => wp_login_url( get_permalink() ),
+				'restUrl'    => rest_url( 'fsm/v1/' ),
+				'nonce'      => wp_create_nonce( 'wp_rest' ),
+				'loginUrl'   => wp_login_url( get_permalink() ),
 				'isLoggedIn' => is_user_logged_in(),
-				'canManage' => FSM_Capabilities::current_user_can(),
-				'i18n'      => array(
-					'submitting'      => __( 'Submitting…', 'fire-survey-maker' ),
-					'thankYou'        => __( 'Thank you for your response!', 'fire-survey-maker' ),
+				'canManage'  => FSM_Capabilities::current_user_can(),
+				'i18n'       => array(
+					'submitting'       => __( 'Submitting…', 'fire-survey-maker' ),
+					'thankYou'         => __( 'Thank you for your response!', 'fire-survey-maker' ),
 					'alreadyResponded' => __( 'You have already responded to this survey.', 'fire-survey-maker' ),
-					'loginRequired'   => __( 'You must be logged in to respond.', 'fire-survey-maker' ),
-					'surveyClosedMsg' => __( 'This survey is not currently accepting responses.', 'fire-survey-maker' ),
-					'error'           => __( 'An error occurred. Please try again.', 'fire-survey-maker' ),
-					'saving'          => __( 'Saving…', 'fire-survey-maker' ),
-					'saved'           => __( 'Survey created! Redirecting…', 'fire-survey-maker' ),
+					'loginRequired'    => __( 'You must be logged in to respond.', 'fire-survey-maker' ),
+					'surveyClosedMsg'  => __( 'This survey is not currently accepting responses.', 'fire-survey-maker' ),
+					'error'            => __( 'An error occurred. Please try again.', 'fire-survey-maker' ),
+				),
+			)
+		);
+
+		wp_localize_script(
+			'fsm-survey-builder-frontend',
+			'fsmBuilder',
+			array(
+				'restUrl'  => rest_url( 'fsm/v1/' ),
+				'nonce'    => wp_create_nonce( 'wp_rest' ),
+				'siteUrl'  => home_url( '/' ),
+				'i18n'     => array(
+					'saving'      => __( 'Saving…', 'fire-survey-maker' ),
+					'saved'       => __( 'Survey created! Redirecting…', 'fire-survey-maker' ),
+					'error'       => __( 'An error occurred. Please try again.', 'fire-survey-maker' ),
+					'titleRequired' => __( 'Title is required.', 'fire-survey-maker' ),
 				),
 			)
 		);

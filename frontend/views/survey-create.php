@@ -68,7 +68,7 @@ if ( ! FSM_Capabilities::current_user_can() ) {
 				<button type="button" id="fsm-fe-save" class="fsm-btn fsm-btn--primary">
 					<?php esc_html_e( 'Publish Survey', 'fire-survey-maker' ); ?>
 				</button>
-				<span id="fsm-fe-status" class="fsm-form__status" aria-live="polite"></span>
+				<span id="fsm-fe-save-status" class="fsm-form__status" aria-live="polite"></span>
 			</div>
 		</div>
 	</div>

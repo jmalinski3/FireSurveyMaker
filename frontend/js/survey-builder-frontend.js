@@ -1,14 +1,16 @@
-/* global fsmFrontend */
+/* global fsmBuilder */
 (function () {
 	'use strict';
 
 	const builderEl = document.getElementById('fsm-frontend-builder');
 	if (!builderEl) return;
 
-	const cfg       = window.fsmFrontend || {};
-	const restUrl   = cfg.restUrl;
-	const nonce     = cfg.nonce;
-	let questions   = [];
+	const cfg     = window.fsmBuilder || {};
+	const restUrl = cfg.restUrl || '';
+	const nonce   = cfg.nonce  || '';
+	const siteUrl = cfg.siteUrl || '/';
+	const i18n    = cfg.i18n   || {};
+	let questions = [];
 
 	// -------------------------------------------------------------------------
 	// Question rendering
@@ -89,6 +91,13 @@
 		return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	}
 
+	function setStatus(msg, isError) {
+		const el = document.getElementById('fsm-fe-save-status');
+		if (!el) return;
+		el.textContent = msg;
+		el.style.color = isError ? '#dc2626' : '#4b5563';
+	}
+
 	// -------------------------------------------------------------------------
 	// Wire up buttons
 	// -------------------------------------------------------------------------
@@ -100,55 +109,63 @@
 		});
 	}
 
-	const saveBtn  = document.getElementById('fsm-fe-save');
-	const statusEl = document.getElementById('fsm-fe-status');
+	const saveBtn = document.getElementById('fsm-fe-save');
 
 	if (saveBtn) {
 		saveBtn.addEventListener('click', async () => {
-			const title = document.getElementById('fsm-fe-title').value.trim();
+			const titleEl = document.getElementById('fsm-fe-title');
+			const title   = titleEl ? titleEl.value.trim() : '';
+
 			if (!title) {
-				statusEl.textContent = 'Title is required.';
-				document.getElementById('fsm-fe-title').focus();
+				setStatus(i18n.titleRequired || 'Title is required.', true);
+				if (titleEl) titleEl.focus();
 				return;
 			}
 
-			saveBtn.disabled     = true;
-			statusEl.textContent = cfg.i18n.saving;
+			if (!restUrl) {
+				setStatus('Configuration error: REST URL missing. Is the plugin active?', true);
+				return;
+			}
 
-			const startRaw = document.getElementById('fsm-fe-start').value;
-			const endRaw   = document.getElementById('fsm-fe-end').value;
+			saveBtn.disabled = true;
+			setStatus(i18n.saving || 'Saving…', false);
+
+			const startRaw = (document.getElementById('fsm-fe-start') || {}).value || '';
+			const endRaw   = (document.getElementById('fsm-fe-end')   || {}).value || '';
 
 			const payload = {
 				title,
-				description:        document.getElementById('fsm-fe-description').value,
-				status:             document.getElementById('fsm-fe-status').value,
-				results_visibility: document.getElementById('fsm-fe-visibility').value,
+				description:        (document.getElementById('fsm-fe-description') || {}).value || '',
+				status:             (document.getElementById('fsm-fe-status')      || {}).value || 'draft',
+				results_visibility: (document.getElementById('fsm-fe-visibility')  || {}).value || 'after_submit',
 				start_date:         startRaw ? startRaw.replace('T', ' ') : null,
 				end_date:           endRaw   ? endRaw.replace('T', ' ')   : null,
 				questions:          questions.map((q, i) => ({
 					...q,
 					sort_order: i,
-					options: (q.options || []).filter(o => o.trim()),
+					options: (q.options || []).filter(o => String(o).trim()),
 				})),
 			};
 
 			try {
 				const resp = await fetch(restUrl + 'surveys', {
-					method: 'POST',
+					method:  'POST',
 					headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
-					body: JSON.stringify(payload),
+					body:    JSON.stringify(payload),
 				});
 				const data = await resp.json();
 
 				if (resp.ok && data.slug) {
-					statusEl.textContent = cfg.i18n.saved;
-					setTimeout(() => { window.location.href = '/surveys/' + data.slug + '/'; }, 1200);
+					setStatus(i18n.saved || 'Survey created! Redirecting…', false);
+					setTimeout(() => {
+						window.location.href = siteUrl + 'surveys/' + data.slug + '/';
+					}, 1200);
 				} else {
-					statusEl.textContent = data.message || cfg.i18n.error;
+					setStatus(data.message || i18n.error || 'An error occurred.', true);
 					saveBtn.disabled = false;
 				}
 			} catch (err) {
-				statusEl.textContent = cfg.i18n.error;
+				setStatus((i18n.error || 'An error occurred.') + ' (' + err.message + ')', true);
 				saveBtn.disabled = false;
 			}
 		});
