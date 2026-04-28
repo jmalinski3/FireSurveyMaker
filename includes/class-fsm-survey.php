@@ -5,21 +5,30 @@ class FSM_Survey {
 
 	public static function create( array $data ): int|false {
 		global $wpdb;
-		$slug = self::unique_slug( $data['title'] );
-		$result = $wpdb->insert(
-			FSM_Database::surveys_table(),
-			array(
-				'slug'               => $slug,
-				'title'              => sanitize_text_field( $data['title'] ),
-				'description'        => wp_kses_post( $data['description'] ?? '' ),
-				'status'             => $data['status'] ?? 'draft',
-				'created_by'         => get_current_user_id(),
-				'start_date'         => $data['start_date'] ?? null,
-				'end_date'           => $data['end_date'] ?? null,
-				'results_visibility' => $data['results_visibility'] ?? 'after_submit',
-			),
-			array( '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
+		$slug    = self::unique_slug( $data['title'] );
+		$fields  = array(
+			'slug'               => $slug,
+			'title'              => sanitize_text_field( $data['title'] ),
+			'description'        => wp_kses_post( $data['description'] ?? '' ),
+			'status'             => $data['status'] ?? 'draft',
+			'created_by'         => get_current_user_id(),
+			'results_visibility' => $data['results_visibility'] ?? 'after_submit',
 		);
+		$formats = array( '%s', '%s', '%s', '%s', '%d', '%s' );
+
+		// Only include date fields when a real value is provided; omitting them
+		// lets MySQL use the column DEFAULT (NULL) and avoids strict-mode errors
+		// caused by wpdb converting null to '' for datetime columns.
+		if ( ! empty( $data['start_date'] ) ) {
+			$fields['start_date'] = $data['start_date'];
+			$formats[]            = '%s';
+		}
+		if ( ! empty( $data['end_date'] ) ) {
+			$fields['end_date'] = $data['end_date'];
+			$formats[]          = '%s';
+		}
+
+		$result = $wpdb->insert( FSM_Database::surveys_table(), $fields, $formats );
 		return $result ? (int) $wpdb->insert_id : false;
 	}
 
@@ -37,6 +46,8 @@ class FSM_Survey {
 			'results_visibility' => array( null, '%s' ),
 		);
 
+		$date_keys = array( 'start_date', 'end_date' );
+
 		foreach ( $allowed as $key => $config ) {
 			if ( ! array_key_exists( $key, $data ) ) {
 				continue;
@@ -44,6 +55,11 @@ class FSM_Survey {
 			$val = $data[ $key ];
 			if ( $config[0] ) {
 				$val = call_user_func( $config[0], $val );
+			}
+			// Skip date fields when empty to avoid wpdb converting null to ''
+			// which MySQL strict mode rejects for datetime columns.
+			if ( in_array( $key, $date_keys, true ) && empty( $val ) ) {
+				continue;
 			}
 			$fields[ $key ] = $val;
 			$formats[]      = $config[1];

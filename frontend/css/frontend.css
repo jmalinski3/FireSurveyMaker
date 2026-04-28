@@ -53,8 +53,28 @@
 	border-radius: 6px;
 	margin-bottom: 12px;
 }
-.fsm-survey-list__link { text-decoration: none; color: inherit; }
-.fsm-survey-list__link:hover strong { text-decoration: underline; }
+.fsm-survey-list__item--submitted { background: #f9fafb; }
+.fsm-survey-list__header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 6px;
+}
+.fsm-survey-list__title { font-size: 16px; }
+.fsm-survey-list__desc  { color: #6b7280; margin: 0 0 10px; font-size: 14px; }
+.fsm-survey-list__actions { margin-top: 10px; }
+
+/* Badges */
+.fsm-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.fsm-badge--submitted { background: #d1fae5; color: #065f46; }
 
 /* Survey form */
 .fsm-survey__title { margin-bottom: 8px; }

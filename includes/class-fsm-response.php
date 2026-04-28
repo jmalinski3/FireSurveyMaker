@@ -3,6 +3,17 @@ defined( 'ABSPATH' ) || exit;
 
 class FSM_Response {
 
+	public static function get_survey_ids_for_user( int $user_id ): array {
+		global $wpdb;
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT survey_id FROM ' . FSM_Database::responses_table() . ' WHERE user_id = %d',
+				$user_id
+			)
+		);
+		return array_map( 'intval', $ids ?: array() );
+	}
+
 	public static function has_responded( int $survey_id, int $user_id ): bool {
 		global $wpdb;
 		return (bool) $wpdb->get_var(
