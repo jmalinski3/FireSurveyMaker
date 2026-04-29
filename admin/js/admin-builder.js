@@ -143,12 +143,12 @@
 			saveBtn.disabled = true;
 			saveStatus.textContent = i18n.saving;
 
+			const startRaw = getField('fsm-start-date');
+			const endRaw   = getField('fsm-end-date');
 			const payload = {
 				title:              getField('fsm-title'),
 				description:        getField('fsm-description'),
 				status:             getField('fsm-status'),
-				start_date:         getField('fsm-start-date').replace('T', ' ') || null,
-				end_date:           getField('fsm-end-date').replace('T', ' ') || null,
 				results_visibility: getField('fsm-visibility'),
 				questions:          questions.map((q, i) => ({
 					...q,
@@ -156,6 +156,8 @@
 					options: (q.options || []).filter(o => (o.option_text || o).trim()),
 				})),
 			};
+			if (startRaw) payload.start_date = startRaw.replace('T', ' ');
+			if (endRaw)   payload.end_date   = endRaw.replace('T', ' ');
 
 			try {
 				let result;
