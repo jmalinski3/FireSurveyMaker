@@ -82,7 +82,7 @@ class FSM_REST_API {
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error( 'rest_forbidden', __( 'You must be logged in.', 'fire-survey-maker' ), array( 'status' => 401 ) );
 		}
-		if ( ! FSM_Capabilities::current_user_can() ) {
+		if ( ! current_user_can( 'manage_surveys' ) ) {
 			return new WP_Error( 'rest_forbidden', __( 'You do not have permission to manage surveys.', 'fire-survey-maker' ), array( 'status' => 403 ) );
 		}
 		return true;
@@ -227,7 +227,7 @@ class FSM_REST_API {
 
 		$visibility = $survey['results_visibility'];
 
-		if ( 'admin_only' === $visibility && ! FSM_Capabilities::current_user_can() ) {
+		if ( 'admin_only' === $visibility && ! current_user_can( 'manage_surveys' ) ) {
 			return new WP_Error( 'rest_forbidden', __( 'Results are not public for this survey.', 'fire-survey-maker' ), array( 'status' => 403 ) );
 		}
 		if ( 'logged_in' === $visibility && ! is_user_logged_in() ) {
@@ -237,7 +237,7 @@ class FSM_REST_API {
 			if ( ! is_user_logged_in() ) {
 				return new WP_Error( 'rest_forbidden', __( 'You must submit a response before viewing results.', 'fire-survey-maker' ), array( 'status' => 401 ) );
 			}
-			if ( ! FSM_Capabilities::current_user_can() && ! FSM_Response::has_responded( $survey_id, get_current_user_id() ) ) {
+			if ( ! current_user_can( 'manage_surveys' ) && ! FSM_Response::has_responded( $survey_id, get_current_user_id() ) ) {
 				return new WP_Error( 'rest_forbidden', __( 'You must submit a response before viewing results.', 'fire-survey-maker' ), array( 'status' => 403 ) );
 			}
 		}
@@ -260,28 +260,37 @@ class FSM_REST_API {
 
 	public static function get_roles(): WP_REST_Response {
 		global $wp_roles;
-		$all     = $wp_roles->get_names();
-		$granted = get_option( 'fsm_roles_with_cap', array() );
-		$result  = array();
-		foreach ( $all as $slug => $name ) {
+		$result = array();
+		foreach ( $wp_roles->get_names() as $slug => $name ) {
+			$role = get_role( $slug );
 			$result[] = array(
 				'slug'    => $slug,
 				'name'    => $name,
-				'granted' => in_array( $slug, $granted, true ),
+				'granted' => $role ? $role->has_cap( 'manage_surveys' ) : false,
 			);
 		}
 		return rest_ensure_response( $result );
 	}
 
 	public static function update_roles( WP_REST_Request $request ): WP_REST_Response {
-		$data  = $request->get_json_params();
-		$grant = $data['grant'] ?? array();
+		$data   = $request->get_json_params();
+		$grant  = $data['grant'] ?? array();
 		$revoke = $data['revoke'] ?? array();
-		foreach ( $grant as $role ) {
-			FSM_Capabilities::grant_to_role( sanitize_key( $role ) );
+		foreach ( $grant as $role_slug ) {
+			$role = get_role( sanitize_key( $role_slug ) );
+			if ( $role ) {
+				$role->add_cap( 'manage_surveys' );
+			}
 		}
-		foreach ( $revoke as $role ) {
-			FSM_Capabilities::revoke_from_role( sanitize_key( $role ) );
+		foreach ( $revoke as $role_slug ) {
+			$slug = sanitize_key( $role_slug );
+			if ( 'administrator' === $slug ) {
+				continue;
+			}
+			$role = get_role( $slug );
+			if ( $role ) {
+				$role->remove_cap( 'manage_surveys' );
+			}
 		}
 		return rest_ensure_response( array( 'updated' => true ) );
 	}

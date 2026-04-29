@@ -4,7 +4,7 @@ defined( 'ABSPATH' ) || exit;
 class FSM_CSV_Export {
 
 	public static function stream( int $survey_id ): never {
-		if ( ! FSM_Capabilities::current_user_can() ) {
+		if ( ! current_user_can( 'manage_surveys' ) ) {
 			wp_die( esc_html__( 'Forbidden.', 'fire-survey-maker' ), '', array( 'response' => 403 ) );
 		}
 

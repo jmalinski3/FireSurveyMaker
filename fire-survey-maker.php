@@ -19,7 +19,6 @@ define( 'FSM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 require_once FSM_PLUGIN_DIR . 'includes/class-fsm-database.php';
 require_once FSM_PLUGIN_DIR . 'includes/class-fsm-activator.php';
-require_once FSM_PLUGIN_DIR . 'includes/class-fsm-capabilities.php';
 require_once FSM_PLUGIN_DIR . 'includes/class-fsm-survey.php';
 require_once FSM_PLUGIN_DIR . 'includes/class-fsm-question.php';
 require_once FSM_PLUGIN_DIR . 'includes/class-fsm-response.php';

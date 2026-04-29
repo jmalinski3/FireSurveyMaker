@@ -12,7 +12,7 @@ class FSM_Admin {
 		add_menu_page(
 			__( 'FireSurveyMaker', 'fire-survey-maker' ),
 			__( 'Surveys', 'fire-survey-maker' ),
-			FSM_Capabilities::CAP,
+			'manage_surveys',
 			'fsm-surveys',
 			array( $this, 'render_survey_list' ),
 			'dashicons-feedback',
@@ -23,7 +23,7 @@ class FSM_Admin {
 			'fsm-surveys',
 			__( 'All Surveys', 'fire-survey-maker' ),
 			__( 'All Surveys', 'fire-survey-maker' ),
-			FSM_Capabilities::CAP,
+			'manage_surveys',
 			'fsm-surveys',
 			array( $this, 'render_survey_list' )
 		);
@@ -32,7 +32,7 @@ class FSM_Admin {
 			'fsm-surveys',
 			__( 'Add New Survey', 'fire-survey-maker' ),
 			__( 'Add New', 'fire-survey-maker' ),
-			FSM_Capabilities::CAP,
+			'manage_surveys',
 			'fsm-survey-new',
 			array( $this, 'render_survey_edit' )
 		);
@@ -41,7 +41,7 @@ class FSM_Admin {
 			'fsm-surveys',
 			__( 'Edit Survey', 'fire-survey-maker' ),
 			'',
-			FSM_Capabilities::CAP,
+			'manage_surveys',
 			'fsm-survey-edit',
 			array( $this, 'render_survey_edit' )
 		);
@@ -50,7 +50,7 @@ class FSM_Admin {
 			'fsm-surveys',
 			__( 'Survey Results', 'fire-survey-maker' ),
 			'',
-			FSM_Capabilities::CAP,
+			'manage_surveys',
 			'fsm-survey-results',
 			array( $this, 'render_survey_results' )
 		);
@@ -79,9 +79,16 @@ class FSM_Admin {
 
 		wp_enqueue_style( 'fsm-admin', FSM_PLUGIN_URL . 'admin/css/admin.css', array(), FSM_VERSION );
 		wp_enqueue_script(
+			'fsm-question-builder',
+			FSM_PLUGIN_URL . 'assets/js/question-builder.js',
+			array(),
+			FSM_VERSION,
+			true
+		);
+		wp_enqueue_script(
 			'fsm-admin-builder',
 			FSM_PLUGIN_URL . 'admin/js/admin-builder.js',
-			array(),
+			array( 'fsm-question-builder' ),
 			FSM_VERSION,
 			true
 		);
@@ -126,24 +133,25 @@ class FSM_Admin {
 	public function render_settings(): void {
 		global $wp_roles;
 		if ( isset( $_POST['fsm_settings_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['fsm_settings_nonce'] ) ), 'fsm_settings' ) ) {
-			$granted = get_option( 'fsm_roles_with_cap', array() );
-			$all_roles = array_keys( $wp_roles->get_names() );
-			foreach ( $all_roles as $role ) {
-				if ( 'administrator' === $role ) {
+			foreach ( array_keys( $wp_roles->get_names() ) as $role_slug ) {
+				if ( 'administrator' === $role_slug ) {
 					continue;
 				}
-				$checked = isset( $_POST['fsm_roles'][ $role ] );
-				if ( $checked && ! in_array( $role, $granted, true ) ) {
-					FSM_Capabilities::grant_to_role( $role );
-				} elseif ( ! $checked && in_array( $role, $granted, true ) ) {
-					FSM_Capabilities::revoke_from_role( $role );
+				$role = get_role( $role_slug );
+				if ( ! $role ) {
+					continue;
+				}
+				$checked = isset( $_POST['fsm_roles'][ $role_slug ] );
+				if ( $checked && ! $role->has_cap( 'manage_surveys' ) ) {
+					$role->add_cap( 'manage_surveys' );
+				} elseif ( ! $checked && $role->has_cap( 'manage_surveys' ) ) {
+					$role->remove_cap( 'manage_surveys' );
 				}
 			}
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'fire-survey-maker' ) . '</p></div>';
 		}
 
-		$roles_with_cap = get_option( 'fsm_roles_with_cap', array() );
-		$all_roles      = $wp_roles->get_names();
+		$all_roles = $wp_roles->get_names();
 		require FSM_PLUGIN_DIR . 'admin/views/settings.php';
 	}
 }

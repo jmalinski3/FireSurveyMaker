@@ -7,7 +7,7 @@ if ( ! is_user_logged_in() ) {
 	exit;
 }
 
-if ( ! FSM_Capabilities::current_user_can() ) {
+if ( ! current_user_can( 'manage_surveys' ) ) {
 	wp_die( esc_html__( 'You do not have permission to create surveys.', 'fire-survey-maker' ), '', array( 'response' => 403 ) );
 }
 ?>
