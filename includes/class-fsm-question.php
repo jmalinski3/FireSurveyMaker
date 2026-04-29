@@ -3,14 +3,20 @@ defined( 'ABSPATH' ) || exit;
 
 class FSM_Question {
 
+	const ALLOWED_TYPES = array( 'multiple_choice', 'checkbox', 'short_text' );
+
 	public static function create( int $survey_id, array $data ): int|false {
 		global $wpdb;
+		$question_type = $data['question_type'] ?? '';
+		if ( ! in_array( $question_type, self::ALLOWED_TYPES, true ) ) {
+			return false;
+		}
 		$result = $wpdb->insert(
 			FSM_Database::questions_table(),
 			array(
 				'survey_id'     => $survey_id,
 				'question_text' => sanitize_textarea_field( $data['question_text'] ),
-				'question_type' => $data['question_type'],
+				'question_type' => $question_type,
 				'sort_order'    => (int) ( $data['sort_order'] ?? 0 ),
 				'required'      => isset( $data['required'] ) ? (int) $data['required'] : 1,
 			),
@@ -20,7 +26,7 @@ class FSM_Question {
 			return false;
 		}
 		$question_id = (int) $wpdb->insert_id;
-		if ( in_array( $data['question_type'], array( 'multiple_choice', 'checkbox' ), true ) && ! empty( $data['options'] ) ) {
+		if ( in_array( $question_type, array( 'multiple_choice', 'checkbox' ), true ) && ! empty( $data['options'] ) ) {
 			foreach ( $data['options'] as $i => $option_text ) {
 				$wpdb->insert(
 					FSM_Database::options_table(),

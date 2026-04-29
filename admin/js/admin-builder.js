@@ -121,6 +121,10 @@
 		return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	}
 
+	function escHtml(str) {
+		return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
 	// -------------------------------------------------------------------------
 	// Add question button
 	// -------------------------------------------------------------------------
@@ -227,11 +231,11 @@
 			const section = document.createElement('div');
 			section.style.marginBottom = '24px';
 			if (q.type === 'short_text') {
-				section.innerHTML = `<h3>${escAttr(q.text)}</h3>
-					<ul class="fsm-text-answers">${(q.answers || []).map(a => `<li>${escAttr(a)}</li>`).join('')}</ul>`;
+				section.innerHTML = `<h3>${escHtml(q.text)}</h3>
+					<ul class="fsm-text-answers">${(q.answers || []).map(a => `<li>${escHtml(a)}</li>`).join('')}</ul>`;
 			} else {
 				const canvasId = 'fsm-chart-' + q.id;
-				section.innerHTML = `<h3>${escAttr(q.text)}</h3><canvas id="${canvasId}" height="80"></canvas>`;
+				section.innerHTML = `<h3>${escHtml(q.text)}</h3><canvas id="${canvasId}" height="80"></canvas>`;
 				container.appendChild(section);
 				drawChart(canvasId, q);
 				return;
