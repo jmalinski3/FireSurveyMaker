@@ -198,7 +198,11 @@
 					questions  = result.questions || [];
 					renderQuestions();
 					setStatus(i18n.saved || 'Saved!', false);
-					if (cfg.onSaved) cfg.onSaved(result);
+					// onSaved owns the save button on success: callers that allow
+					// further edits (admin) should re-enable it; callers that
+					// redirect (frontend) should leave it disabled to prevent a
+					// duplicate submission during the redirect delay.
+					if (cfg.onSaved) cfg.onSaved(result, { saveBtn });
 				} else {
 					setStatus(result.message || i18n.error || 'An error occurred.', true);
 					if (saveBtn) saveBtn.disabled = false;
@@ -206,10 +210,7 @@
 			} catch (e) {
 				setStatus((i18n.error || 'An error occurred.') + (e && e.message ? ' (' + e.message + ')' : ''), true);
 				if (saveBtn) saveBtn.disabled = false;
-				return;
 			}
-
-			if (saveBtn) saveBtn.disabled = false;
 		}
 
 		const addBtn = document.getElementById(cfg.addBtnId);

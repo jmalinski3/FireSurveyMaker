@@ -120,16 +120,20 @@ class FSM_REST_API {
 			return new WP_Error( 'missing_title', __( 'Title is required.', 'fire-survey-maker' ), array( 'status' => 400 ) );
 		}
 
+		$questions = ( ! empty( $data['questions'] ) && is_array( $data['questions'] ) ) ? $data['questions'] : array();
+		$validation = self::validate_new_questions( $questions );
+		if ( is_wp_error( $validation ) ) {
+			return $validation;
+		}
+
 		$survey_id = FSM_Survey::create( $data );
 		if ( ! $survey_id ) {
 			return new WP_Error( 'db_error', __( 'Could not create survey.', 'fire-survey-maker' ), array( 'status' => 500 ) );
 		}
 
-		if ( ! empty( $data['questions'] ) && is_array( $data['questions'] ) ) {
-			foreach ( $data['questions'] as $i => $q ) {
-				$q['sort_order'] = $i;
-				FSM_Question::create( $survey_id, $q );
-			}
+		foreach ( $questions as $i => $q ) {
+			$q['sort_order'] = $i;
+			FSM_Question::create( $survey_id, $q );
 		}
 
 		$survey              = FSM_Survey::get( $survey_id );
@@ -144,6 +148,14 @@ class FSM_REST_API {
 		}
 
 		$data = $request->get_json_params();
+
+		if ( isset( $data['questions'] ) && is_array( $data['questions'] ) ) {
+			$validation = self::validate_new_questions( $data['questions'] );
+			if ( is_wp_error( $validation ) ) {
+				return $validation;
+			}
+		}
+
 		FSM_Survey::update( $id, $data );
 
 		if ( isset( $data['questions'] ) && is_array( $data['questions'] ) ) {
@@ -166,6 +178,33 @@ class FSM_REST_API {
 		$survey              = FSM_Survey::get( $id );
 		$survey['questions'] = FSM_Question::get_by_survey( $id );
 		return rest_ensure_response( $survey );
+	}
+
+	/**
+	 * Validate the question_type of every new (unsaved) question in the payload.
+	 * Existing questions (those with an id) keep their stored type; FSM_Question::update()
+	 * doesn't touch question_type, so they don't need re-validation here.
+	 */
+	private static function validate_new_questions( array $questions ): ?WP_Error {
+		foreach ( $questions as $i => $q ) {
+			if ( ! empty( $q['id'] ) ) {
+				continue;
+			}
+			$type = $q['question_type'] ?? '';
+			if ( ! in_array( $type, FSM_Question::ALLOWED_TYPES, true ) ) {
+				return new WP_Error(
+					'invalid_question_type',
+					sprintf(
+						/* translators: 1: question position (1-indexed), 2: invalid type */
+						__( 'Question %1$d has an invalid type "%2$s".', 'fire-survey-maker' ),
+						$i + 1,
+						(string) $type
+					),
+					array( 'status' => 400 )
+				);
+			}
+		}
+		return null;
 	}
 
 	public static function delete_survey( WP_REST_Request $request ): WP_REST_Response|WP_Error {

@@ -40,7 +40,8 @@
 				dragHandleHtml: '<span class="fsm-drag-handle" style="cursor:grab;color:#aaa;">&#9776;</span>',
 				requiredLabel:  '',
 			},
-			onSaved(result) {
+			onSaved(result, { saveBtn }) {
+				if (saveBtn) saveBtn.disabled = false;
 				if (!window.location.search.includes('survey_id')) {
 					const sep = window.location.search ? '&' : '?';
 					window.history.replaceState({}, '', window.location.href + sep + 'page=fsm-survey-edit&survey_id=' + result.id);
