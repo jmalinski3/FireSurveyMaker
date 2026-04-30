@@ -148,10 +148,18 @@ class FSM_REST_API {
 			return new WP_Error( 'not_found', __( 'Survey not found.', 'fire-survey-maker' ), array( 'status' => 404 ) );
 		}
 
-		$data = $request->get_json_params();
+		$data         = $request->get_json_params();
+		$has_questions = isset( $data['questions'] ) && is_array( $data['questions'] );
+		$existing_ids = array();
 
-		if ( isset( $data['questions'] ) && is_array( $data['questions'] ) ) {
+		if ( $has_questions ) {
 			$validation = self::validate_question_types( $data['questions'] );
+			if ( is_wp_error( $validation ) ) {
+				return $validation;
+			}
+
+			$existing_ids = array_map( 'intval', array_column( FSM_Question::get_by_survey( $id ), 'id' ) );
+			$validation   = self::validate_question_ids( $data['questions'], $existing_ids );
 			if ( is_wp_error( $validation ) ) {
 				return $validation;
 			}
@@ -159,9 +167,8 @@ class FSM_REST_API {
 
 		FSM_Survey::update( $id, $data );
 
-		if ( isset( $data['questions'] ) && is_array( $data['questions'] ) ) {
-			$existing_ids = array_column( FSM_Question::get_by_survey( $id ), 'id' );
-			$incoming_ids = array_filter( array_column( $data['questions'], 'id' ) );
+		if ( $has_questions ) {
+			$incoming_ids = array_map( 'intval', array_filter( array_column( $data['questions'], 'id' ) ) );
 
 			foreach ( array_diff( $existing_ids, $incoming_ids ) as $del_id ) {
 				FSM_Question::delete( (int) $del_id );
@@ -191,6 +198,37 @@ class FSM_REST_API {
 	 *     principle and would let a client smuggle invalid data into the
 	 *     payload roundtrip.
 	 */
+	/**
+	 * Validate that every incoming question id belongs to the survey being updated.
+	 * Prevents a PUT to survey A from referencing a question id that lives in
+	 * survey B, which would otherwise cause cross-survey data corruption: A's
+	 * questions would be deleted (because they're absent from the payload) and
+	 * B's question would be mutated (because the foreign id is treated as
+	 * legitimate by FSM_Question::update).
+	 */
+	private static function validate_question_ids( array $questions, array $existing_ids ): ?WP_Error {
+		$existing_ids = array_map( 'intval', $existing_ids );
+		foreach ( $questions as $i => $q ) {
+			if ( empty( $q['id'] ) ) {
+				continue;
+			}
+			$qid = (int) $q['id'];
+			if ( ! in_array( $qid, $existing_ids, true ) ) {
+				return new WP_Error(
+					'invalid_question_id',
+					sprintf(
+						/* translators: 1: question position (1-indexed), 2: question id */
+						__( 'Question %1$d (id %2$d) does not belong to this survey.', 'fire-survey-maker' ),
+						$i + 1,
+						$qid
+					),
+					array( 'status' => 400 )
+				);
+			}
+		}
+		return null;
+	}
+
 	private static function validate_question_types( array $questions ): ?WP_Error {
 		foreach ( $questions as $i => $q ) {
 			$type = $q['question_type'] ?? '';
