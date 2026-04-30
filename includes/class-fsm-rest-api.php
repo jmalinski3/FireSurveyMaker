@@ -115,6 +115,8 @@ class FSM_REST_API {
 	}
 
 	public static function create_survey( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		global $wpdb;
+
 		$data = $request->get_json_params();
 		if ( empty( $data['title'] ) ) {
 			return new WP_Error( 'missing_title', __( 'Title is required.', 'fire-survey-maker' ), array( 'status' => 400 ) );
@@ -126,16 +128,25 @@ class FSM_REST_API {
 			return $validation;
 		}
 
+		$wpdb->query( 'START TRANSACTION' );
+
 		$survey_id = FSM_Survey::create( $data );
 		if ( ! $survey_id ) {
+			$wpdb->query( 'ROLLBACK' );
 			return new WP_Error( 'db_error', __( 'Could not create survey.', 'fire-survey-maker' ), array( 'status' => 500 ) );
 		}
 
 		foreach ( $questions as $i => $q ) {
 			unset( $q['id'] ); // every question on create is new; ignore any client-supplied id
 			$q['sort_order'] = $i;
-			FSM_Question::create( $survey_id, $q );
+			if ( ! FSM_Question::create( $survey_id, $q ) ) {
+				$wpdb->query( 'ROLLBACK' );
+				FSM_Survey::delete( $survey_id );
+				return new WP_Error( 'db_error', __( 'Could not create question.', 'fire-survey-maker' ), array( 'status' => 500 ) );
+			}
 		}
+
+		$wpdb->query( 'COMMIT' );
 
 		$survey              = FSM_Survey::get( $survey_id );
 		$survey['questions'] = FSM_Question::get_by_survey( $survey_id );
@@ -143,6 +154,8 @@ class FSM_REST_API {
 	}
 
 	public static function update_survey( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		global $wpdb;
+
 		$id = (int) $request['id'];
 		if ( ! FSM_Survey::get( $id ) ) {
 			return new WP_Error( 'not_found', __( 'Survey not found.', 'fire-survey-maker' ), array( 'status' => 404 ) );
@@ -165,7 +178,16 @@ class FSM_REST_API {
 			}
 		}
 
-		FSM_Survey::update( $id, $data );
+		if ( $has_questions ) {
+			$wpdb->query( 'START TRANSACTION' );
+		}
+
+		if ( ! FSM_Survey::update( $id, $data ) ) {
+			if ( $has_questions ) {
+				$wpdb->query( 'ROLLBACK' );
+			}
+			return new WP_Error( 'db_error', __( 'Could not update survey.', 'fire-survey-maker' ), array( 'status' => 500 ) );
+		}
 
 		if ( $has_questions ) {
 			$incoming_ids = array_map( 'intval', array_filter( array_column( $data['questions'], 'id' ) ) );
@@ -178,9 +200,13 @@ class FSM_REST_API {
 				if ( ! empty( $q['id'] ) ) {
 					FSM_Question::update( (int) $q['id'], $q );
 				} else {
-					FSM_Question::create( $id, $q );
+					if ( ! FSM_Question::create( $id, $q ) ) {
+						$wpdb->query( 'ROLLBACK' );
+						return new WP_Error( 'db_error', __( 'Could not create question.', 'fire-survey-maker' ), array( 'status' => 500 ) );
+					}
 				}
 			}
+			$wpdb->query( 'COMMIT' );
 		}
 
 		$survey              = FSM_Survey::get( $id );
@@ -188,16 +214,6 @@ class FSM_REST_API {
 		return rest_ensure_response( $survey );
 	}
 
-	/**
-	 * Validate the question_type of every question in a payload.
-	 *
-	 * Always validate, regardless of any client-supplied `id`:
-	 *   - On create, every question is new and an incoming `id` is meaningless,
-	 *     but a malicious client can include one to attempt to bypass checks.
-	 *   - On update, accepting an unknown type for any question is wrong on
-	 *     principle and would let a client smuggle invalid data into the
-	 *     payload roundtrip.
-	 */
 	/**
 	 * Validate that every incoming question id belongs to the survey being updated.
 	 * Prevents a PUT to survey A from referencing a question id that lives in
@@ -229,6 +245,16 @@ class FSM_REST_API {
 		return null;
 	}
 
+	/**
+	 * Validate the question_type of every question in a payload.
+	 *
+	 * Always validate, regardless of any client-supplied `id`:
+	 *   - On create, every question is new and an incoming `id` is meaningless,
+	 *     but a malicious client can include one to attempt to bypass checks.
+	 *   - On update, accepting an unknown type for any question is wrong on
+	 *     principle and would let a client smuggle invalid data into the
+	 *     payload roundtrip.
+	 */
 	private static function validate_question_types( array $questions ): ?WP_Error {
 		foreach ( $questions as $i => $q ) {
 			$type = $q['question_type'] ?? '';
