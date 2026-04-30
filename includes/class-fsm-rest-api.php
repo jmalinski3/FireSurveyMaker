@@ -121,7 +121,7 @@ class FSM_REST_API {
 		}
 
 		$questions = ( ! empty( $data['questions'] ) && is_array( $data['questions'] ) ) ? $data['questions'] : array();
-		$validation = self::validate_new_questions( $questions );
+		$validation = self::validate_question_types( $questions );
 		if ( is_wp_error( $validation ) ) {
 			return $validation;
 		}
@@ -132,6 +132,7 @@ class FSM_REST_API {
 		}
 
 		foreach ( $questions as $i => $q ) {
+			unset( $q['id'] ); // every question on create is new; ignore any client-supplied id
 			$q['sort_order'] = $i;
 			FSM_Question::create( $survey_id, $q );
 		}
@@ -150,7 +151,7 @@ class FSM_REST_API {
 		$data = $request->get_json_params();
 
 		if ( isset( $data['questions'] ) && is_array( $data['questions'] ) ) {
-			$validation = self::validate_new_questions( $data['questions'] );
+			$validation = self::validate_question_types( $data['questions'] );
 			if ( is_wp_error( $validation ) ) {
 				return $validation;
 			}
@@ -181,15 +182,17 @@ class FSM_REST_API {
 	}
 
 	/**
-	 * Validate the question_type of every new (unsaved) question in the payload.
-	 * Existing questions (those with an id) keep their stored type; FSM_Question::update()
-	 * doesn't touch question_type, so they don't need re-validation here.
+	 * Validate the question_type of every question in a payload.
+	 *
+	 * Always validate, regardless of any client-supplied `id`:
+	 *   - On create, every question is new and an incoming `id` is meaningless,
+	 *     but a malicious client can include one to attempt to bypass checks.
+	 *   - On update, accepting an unknown type for any question is wrong on
+	 *     principle and would let a client smuggle invalid data into the
+	 *     payload roundtrip.
 	 */
-	private static function validate_new_questions( array $questions ): ?WP_Error {
+	private static function validate_question_types( array $questions ): ?WP_Error {
 		foreach ( $questions as $i => $q ) {
-			if ( ! empty( $q['id'] ) ) {
-				continue;
-			}
 			$type = $q['question_type'] ?? '';
 			if ( ! in_array( $type, FSM_Question::ALLOWED_TYPES, true ) ) {
 				return new WP_Error(
