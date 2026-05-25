@@ -1,0 +1,48 @@
+# Copy this file to config.yaml and fill in your values. config.yaml is
+# gitignored so your URLs never get committed.
+#
+# How to find the selectors:
+#   1. Open your UKG login page in Chrome/Firefox.
+#   2. Right-click the field (e.g. the password box) -> Inspect.
+#   3. In DevTools, right-click the highlighted element -> Copy -> Copy selector.
+#   4. Paste it below. Repeat for each field.
+# The values below are GUESSES to get you started; verify every one against
+# your actual UKG instance.
+
+# The page you land on when not logged in (where username/password is entered).
+login_url: "https://CHANGEME.ukg.net/"
+
+# Direct URL to your schedule/roster view once logged in.
+roster_url: "https://CHANGEME.ukg.net/your/roster/path"
+
+# Persistent browser profile. Stores cookies including the "remember this
+# device for 7 days" trust cookie, so TOTP is only needed ~weekly. Keep private.
+profile_dir: "./profile"
+
+# Run without a visible browser window. Use --headful on the CLI for first-run setup.
+headless: true
+
+# Save a screenshot to ./debug on failure (may contain personal data; gitignored).
+debug_screenshots: true
+
+# Skip the run entirely if today's roster CSV already has data (reduces logins
+# once the roster has been captured for the day).
+skip_if_already_captured: true
+
+selectors:
+  username_input: "input[name='username']"
+  password_input: "input[type='password']"
+  submit_button: "button[type='submit']"
+  totp_input: "input[name='otp']"
+  remember_device_checkbox: "input[type='checkbox']"
+  totp_submit_button: "button[type='submit']"
+  roster_table: "table"          # the table element that holds your roster
+  roster_ready_marker: "table"   # element whose presence means the roster has loaded
+
+output:
+  dir: "./output"
+  filename: "roster_{date}.csv"  # {date} -> YYYY-MM-DD of the run
+
+timeouts:
+  navigation_ms: 30000
+  element_ms: 15000

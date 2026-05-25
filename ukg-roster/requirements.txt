@@ -1,0 +1,4 @@
+playwright>=1.40
+pyotp>=2.9
+keyring>=24
+PyYAML>=6

@@ -1,0 +1,22 @@
+# UKG roster grabber schedule.
+# Install with:  crontab crontab.example   (after editing the paths below)
+#
+# cron has a bare environment, so use ABSOLUTE paths. This assumes a virtualenv
+# at /home/pi/FireSurveyMaker/ukg-roster/.venv - adjust to your setup.
+#
+# Every entry runs the SAME script. Because skip_if_already_captured is on, once
+# the day's roster is saved the later morning runs exit immediately without
+# logging in - so the every-5-minute burst just catches the roster the moment
+# it's posted, then stops doing real work.
+
+ROSTER_DIR=/home/pi/FireSurveyMaker/ukg-roster
+PY=/home/pi/FireSurveyMaker/ukg-roster/.venv/bin/python
+
+45 4 * * *                                   cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+0 5 * * *                                    cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+30 5 * * *                                   cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+45 5 * * *                                   cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+0,5,10,15,20,25,30,35,40,45,50,55 6 * * *    cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+0 7 * * *                                    cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+0 19 * * *                                   cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1
+0 21 * * *                                   cd $ROSTER_DIR && $PY ukg_roster.py >> cron.log 2>&1

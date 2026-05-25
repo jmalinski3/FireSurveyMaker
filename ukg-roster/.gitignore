@@ -1,0 +1,16 @@
+# Local config holds your real URLs - never commit it.
+config.yaml
+
+# Persistent browser profile (cookies, 7-day trust cookie) and outputs.
+profile/
+output/
+debug/
+
+# Logs, lock file, and any plaintext secrets fallback.
+*.log
+*.lock
+.env
+
+__pycache__/
+*.pyc
+.venv/

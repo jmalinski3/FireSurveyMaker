@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""UKG roster grabber.
+
+Logs into UKG with a headless browser, scrapes your roster/schedule, and writes
+it to a CSV. Built to run from cron on an always-on box (e.g. a Raspberry Pi).
+
+Security model
+--------------
+- Secrets (username, password, TOTP seed) are read from the OS keyring via
+  python-keyring. Run ``python set_secrets.py`` once to store them. A plaintext
+  .env fallback exists for testing but is discouraged.
+- The browser uses a PERSISTENT profile directory, so UKG's "remember this
+  device for 7 days" cookie survives between runs. The TOTP is therefore only
+  needed about once a week; most runs reuse the session with no login at all.
+- The password and the generated TOTP code are NEVER written to the logs.
+
+Setup
+-----
+1. pip install -r requirements.txt && playwright install chromium
+2. python set_secrets.py            # store creds in the OS keyring
+3. cp config.example.yaml config.yaml  # then fill in URLs + selectors
+4. python ukg_roster.py --headful   # first run: watch it, verify selectors
+5. Install crontab.example once it works headless.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as dt
+import fcntl
+import logging
+import os
+import sys
+from pathlib import Path
+
+import yaml
+import pyotp
+import keyring
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+KEYRING_SERVICE = "ukg-roster"
+HERE = Path(__file__).resolve().parent
+
+
+def build_logger(log_path: Path) -> logging.Logger:
+    log = logging.getLogger("ukg-roster")
+    log.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    stream = logging.StreamHandler(sys.stdout)
+    stream.setFormatter(fmt)
+    log.addHandler(stream)
+    fileh = logging.FileHandler(log_path)
+    fileh.setFormatter(fmt)
+    log.addHandler(fileh)
+    return log
+
+
+def load_config(path: Path) -> dict:
+    if not path.exists():
+        raise SystemExit(f"Config not found: {path}. Copy config.example.yaml to config.yaml.")
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
+def get_secret(name: str, env_key: str) -> str:
+    """Prefer the OS keyring; fall back to an env var for testing."""
+    value = keyring.get_password(KEYRING_SERVICE, name)
+    if value:
+        return value
+    value = os.environ.get(env_key)
+    if value:
+        return value
+    raise SystemExit(
+        f"Missing secret '{name}'. Run set_secrets.py or set ${env_key}."
+    )
+
+
+def acquire_lock(lock_path: Path):
+    """Single-instance guard so overlapping cron runs don't double-login."""
+    handle = open(lock_path, "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return None
+    return handle
+
+
+def is_visible(page, selector: str, timeout: int = 5000) -> bool:
+    try:
+        page.locator(selector).first.wait_for(state="visible", timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
+def already_captured(out_path: Path) -> bool:
+    """True if today's CSV already exists with at least one data row."""
+    if not out_path.exists():
+        return False
+    with open(out_path, newline="") as f:
+        return sum(1 for _ in f) > 1
+
+
+def goto_roster(page, cfg: dict) -> None:
+    page.goto(
+        cfg["roster_url"],
+        wait_until="domcontentloaded",
+        timeout=cfg["timeouts"]["navigation_ms"],
+    )
+
+
+def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> None:
+    sel = cfg["selectors"]
+    el_to = cfg["timeouts"]["element_ms"]
+
+    if is_visible(page, sel["roster_ready_marker"], timeout=3000):
+        log.info("Session still valid; roster loaded without logging in.")
+        return
+
+    if is_visible(page, sel["password_input"], timeout=el_to):
+        log.info("Login form detected; submitting credentials.")
+        if is_visible(page, sel["username_input"], timeout=2000):
+            page.fill(sel["username_input"], secrets["username"])
+        page.fill(sel["password_input"], secrets["password"])
+        page.click(sel["submit_button"])
+        # Whichever appears first: the TOTP prompt or the roster page.
+        try:
+            page.wait_for_selector(
+                f"{sel['totp_input']}, {sel['roster_ready_marker']}", timeout=el_to
+            )
+        except PWTimeout:
+            log.warning("Neither TOTP prompt nor roster appeared after login submit.")
+
+    if is_visible(page, sel["totp_input"], timeout=3000):
+        log.info("TOTP prompt detected; generating one-time code.")
+        page.fill(sel["totp_input"], pyotp.TOTP(secrets["totp_secret"]).now())
+        if is_visible(page, sel["remember_device_checkbox"], timeout=2000):
+            try:
+                page.check(sel["remember_device_checkbox"])
+                log.info("Checked 'remember this device' (renews the 7-day trust).")
+            except Exception:
+                log.warning("Could not check the remember-device box; continuing.")
+        page.click(sel["totp_submit_button"])
+    else:
+        log.info("No TOTP prompt (device still trusted or already authenticated).")
+
+    goto_roster(page, cfg)
+
+
+def scrape_roster(page, cfg: dict, log: logging.Logger) -> list[list[str]]:
+    sel = cfg["selectors"]
+    page.wait_for_selector(sel["roster_ready_marker"], timeout=cfg["timeouts"]["element_ms"])
+    table = page.locator(sel["roster_table"]).first
+    rows: list[list[str]] = []
+    for tr in table.locator("tr").all():
+        cells = tr.locator("th, td").all()
+        row = [c.inner_text().strip() for c in cells]
+        if any(row):
+            rows.append(row)
+    log.info("Scraped %d roster rows.", len(rows))
+    return rows
+
+
+def write_csv(rows: list[list[str]], out_path: Path, log: logging.Logger) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", newline="") as f:
+        csv.writer(f).writerows(rows)
+    log.info("Wrote roster to %s", out_path)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Grab UKG roster and export to CSV.")
+    parser.add_argument("--config", default=str(HERE / "config.yaml"))
+    parser.add_argument("--headful", action="store_true", help="Show the browser (first-run setup).")
+    args = parser.parse_args()
+
+    cfg = load_config(Path(args.config))
+    log = build_logger(HERE / "ukg_roster.log")
+
+    today = dt.date.today().isoformat()
+    out_dir = (HERE / cfg["output"]["dir"]).resolve()
+    out_path = out_dir / cfg["output"]["filename"].format(date=today)
+
+    if cfg.get("skip_if_already_captured", True) and already_captured(out_path):
+        log.info("Today's roster already captured (%s); skipping.", out_path.name)
+        return 0
+
+    lock = acquire_lock(HERE / "ukg_roster.lock")
+    if lock is None:
+        log.info("Another instance is running; exiting.")
+        return 0
+
+    secrets = {
+        "username": get_secret("username", "UKG_USERNAME"),
+        "password": get_secret("password", "UKG_PASSWORD"),
+        "totp_secret": get_secret("totp_secret", "UKG_TOTP_SECRET"),
+    }
+
+    profile_dir = (HERE / cfg["profile_dir"]).resolve()
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    headless = not args.headful and cfg.get("headless", True)
+
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir), headless=headless
+        )
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        try:
+            goto_roster(page, cfg)
+            ensure_logged_in(page, cfg, secrets, log)
+            rows = scrape_roster(page, cfg, log)
+            if not rows:
+                log.warning("Roster appears empty; not overwriting any prior capture.")
+                return 1
+            write_csv(rows, out_path, log)
+        except Exception as exc:  # noqa: BLE001 - top-level guard for cron
+            log.error("Run failed: %s", exc)
+            if cfg.get("debug_screenshots", False):
+                debug_dir = (HERE / "debug").resolve()
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                shot = debug_dir / f"fail_{today}_{dt.datetime.now():%H%M%S}.png"
+                try:
+                    page.screenshot(path=str(shot))
+                    log.error("Saved debug screenshot: %s", shot)
+                except Exception:
+                    pass
+            return 1
+        finally:
+            ctx.close()  # persists cookies, including the 7-day trust cookie
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
