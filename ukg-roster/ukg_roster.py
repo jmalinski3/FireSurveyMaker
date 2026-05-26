@@ -93,6 +93,17 @@ def is_visible(page, selector: str, timeout: int = 5000) -> bool:
         return False
 
 
+def is_present(page, selector: str, timeout: int = 5000) -> bool:
+    """Present in the DOM (attached), regardless of CSS visibility. The
+    Telestaff roster <li> rows have no layout box of their own, so they never
+    report as 'visible' even when fully loaded; we read them via the DOM."""
+    try:
+        page.locator(selector).first.wait_for(state="attached", timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
 def already_captured(out_path: Path) -> bool:
     """True if today's CSV already exists with at least one data row."""
     if not out_path.exists():
@@ -122,7 +133,7 @@ def reach_roster(page, cfg: dict, log: logging.Logger) -> None:
     dismiss = cfg.get("dismiss_selectors") or []
     for attempt in range(3):
         goto_roster(page, cfg)
-        if is_visible(page, sel["roster_ready_marker"], timeout=el_to):
+        if is_present(page, sel["roster_ready_marker"], timeout=el_to):
             return
         dismissed = False
         for d in dismiss:
@@ -148,7 +159,7 @@ def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> Non
     sel = cfg["selectors"]
     el_to = cfg["timeouts"]["element_ms"]
 
-    if is_visible(page, sel["roster_ready_marker"], timeout=3000):
+    if is_present(page, sel["roster_ready_marker"], timeout=3000):
         log.info("Session still valid; roster loaded without logging in.")
         return
 
@@ -166,7 +177,9 @@ def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> Non
         if mfa_continue:
             wait_targets.append(mfa_continue)
         try:
-            page.wait_for_selector(", ".join(wait_targets), timeout=el_to)
+            page.wait_for_selector(
+                ", ".join(wait_targets), state="attached", timeout=el_to
+            )
         except PWTimeout:
             log.warning("No MFA, TOTP, or roster page appeared after login submit.")
 
@@ -252,7 +265,9 @@ ROSTER_EXTRACTOR_JS = r"""
 
 def scrape_roster(page, cfg: dict, log: logging.Logger) -> list[list[str]]:
     sel = cfg["selectors"]
-    page.wait_for_selector(sel["roster_ready_marker"], timeout=cfg["timeouts"]["element_ms"])
+    page.wait_for_selector(
+        sel["roster_ready_marker"], state="attached", timeout=cfg["timeouts"]["element_ms"]
+    )
     data = page.evaluate(ROSTER_EXTRACTOR_JS)
     if not data:
         log.warning("Roster container loaded but no position rows were parsed.")
