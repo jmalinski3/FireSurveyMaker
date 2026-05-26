@@ -46,6 +46,14 @@ selectors:
   roster_table: "table"          # the table element that holds your roster
   roster_ready_marker: "table"   # element whose presence means the roster has loaded
 
+# Optional. Selectors for post-login popups/interstitials to close before the
+# roster loads. UKG Telestaff sometimes routes a fresh login through a "contact
+# log" page (/telestaff/checkContactLog) that must be dismissed first. List the
+# close/acknowledge button selector(s); each is clicked if present. Leave the
+# list empty ([]) if your instance has no such popup.
+dismiss_selectors:
+  - "button.close"
+
 output:
   dir: "./output"
   filename: "roster_{date}.csv"  # {date} -> YYYY-MM-DD of the run

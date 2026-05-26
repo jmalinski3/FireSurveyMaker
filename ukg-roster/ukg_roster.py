@@ -109,6 +109,41 @@ def goto_roster(page, cfg: dict) -> None:
     )
 
 
+def reach_roster(page, cfg: dict, log: logging.Logger) -> None:
+    """Navigate to the roster, dismissing any post-login interstitials first.
+
+    UKG Telestaff sometimes redirects a fresh login through a "contact log"
+    page (/telestaff/checkContactLog) that must be closed before the roster
+    renders. dismiss_selectors lists the close/acknowledge button(s); each is
+    clicked if present, then we re-navigate and re-check for the roster.
+    """
+    sel = cfg["selectors"]
+    el_to = cfg["timeouts"]["element_ms"]
+    dismiss = cfg.get("dismiss_selectors") or []
+    for attempt in range(3):
+        goto_roster(page, cfg)
+        if is_visible(page, sel["roster_ready_marker"], timeout=el_to):
+            return
+        dismissed = False
+        for d in dismiss:
+            if is_visible(page, d, timeout=2000):
+                try:
+                    page.click(d)
+                    page.wait_for_load_state(
+                        "domcontentloaded", timeout=cfg["timeouts"]["navigation_ms"]
+                    )
+                    log.info("Dismissed a post-login interstitial popup.")
+                    dismissed = True
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Could not dismiss interstitial %s: %s", d, exc)
+        if not dismissed:
+            log.warning(
+                "Roster not ready and no interstitial to dismiss (attempt %d/3).",
+                attempt + 1,
+            )
+    # Final readiness is enforced by scrape_roster's wait_for_selector.
+
+
 def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> None:
     sel = cfg["selectors"]
     el_to = cfg["timeouts"]["element_ms"]
@@ -164,7 +199,7 @@ def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> Non
     else:
         log.info("No TOTP prompt (device still trusted or already authenticated).")
 
-    goto_roster(page, cfg)
+    reach_roster(page, cfg, log)
 
 
 def scrape_roster(page, cfg: dict, log: logging.Logger) -> list[list[str]]:
