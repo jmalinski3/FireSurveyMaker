@@ -202,18 +202,63 @@ def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> Non
     reach_roster(page, cfg, log)
 
 
+ROSTER_HEADER = [
+    "date", "shift", "station", "unit", "position", "name", "person_id",
+    "job_title", "work_code", "status", "record_type", "start", "end", "duration",
+]
+
+# The Telestaff roster is a nested tree (#rosterFixedContent: date > battalion >
+# shift > station > unit > position), not an HTML table. This walks each
+# position row and pulls its fields plus the station/unit/shift/date context
+# from its ancestors. Returns a list of rows aligned with ROSTER_HEADER.
+ROSTER_EXTRACTOR_JS = r"""
+() => {
+  const root = document.querySelector('#rosterFixedContent');
+  if (!root) return [];
+  const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const txt = (el) => clean(el ? el.textContent : '');
+  const attr = (el, a) => (el && el.getAttribute(a)) || '';
+  const out = [];
+  root.querySelectorAll('li.idPosition').forEach((li) => {
+    const dateLi = li.closest('li.idDate');
+    const shiftLi = li.closest('li.idShift');
+    const stationLi = li.closest('li.idStation');
+    const unitLi = li.closest('li.idUnit');
+    const item = li.querySelector('.positionItem');
+    const resource = li.querySelector('.nameColumn.resourceDisplay');
+    const exc = li.querySelector('.exceptionColumn');
+    out.push([
+      attr(dateLi, 'data-date-ymd'),
+      txt(shiftLi && shiftLi.querySelector('.shiftNameText')),
+      txt(stationLi && stationLi.querySelector('.organizationName .bold')),
+      txt(unitLi && unitLi.querySelector('.unitName .bold')),
+      txt(li.querySelector('.positionName .positionNameText')),
+      txt(li.querySelector('.displayNameText')) ||
+        txt(li.querySelector('.vacancyDisplay .pull-left')),
+      txt(li.querySelector('.idColumnText')),
+      attr(resource, 'data-popup-jobtitle'),
+      attr(exc, 'data-popup-title'),
+      attr(exc, 'data-popup-status'),
+      attr(item, 'data-record-type'),
+      attr(li.querySelector('[data-field="startshift"]'), 'data-popup-value'),
+      attr(li.querySelector('[data-field="endshift"]'), 'data-popup-value'),
+      attr(li.querySelector('[data-field="duration"]'), 'data-popup-value'),
+    ]);
+  });
+  return out;
+}
+"""
+
+
 def scrape_roster(page, cfg: dict, log: logging.Logger) -> list[list[str]]:
     sel = cfg["selectors"]
     page.wait_for_selector(sel["roster_ready_marker"], timeout=cfg["timeouts"]["element_ms"])
-    table = page.locator(sel["roster_table"]).first
-    rows: list[list[str]] = []
-    for tr in table.locator("tr").all():
-        cells = tr.locator("th, td").all()
-        row = [c.inner_text().strip() for c in cells]
-        if any(row):
-            rows.append(row)
-    log.info("Scraped %d roster rows.", len(rows))
-    return rows
+    data = page.evaluate(ROSTER_EXTRACTOR_JS)
+    if not data:
+        log.warning("Roster container loaded but no position rows were parsed.")
+        return []
+    log.info("Scraped %d roster rows.", len(data))
+    return [ROSTER_HEADER] + data
 
 
 def write_csv(rows: list[list[str]], out_path: Path, log: logging.Logger) -> None:

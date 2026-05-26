@@ -43,8 +43,10 @@ selectors:
   totp_input: "input[name='otp']"
   remember_device_checkbox: "input[type='checkbox']"
   totp_submit_button: "button[type='submit']"
-  roster_table: "table"          # the table element that holds your roster
-  roster_ready_marker: "table"   # element whose presence means the roster has loaded
+  # Element whose presence means the roster has finished loading. For UKG
+  # Telestaff this is a position row in the roster tree (#rosterFixedContent).
+  # The scraper walks that tree directly, so no separate table selector exists.
+  roster_ready_marker: "li.idPosition"
 
 # Optional. Selectors for post-login popups/interstitials to close before the
 # roster loads. UKG Telestaff sometimes routes a fresh login through a "contact
