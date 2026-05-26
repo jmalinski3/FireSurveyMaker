@@ -28,8 +28,10 @@ import argparse
 import csv
 import datetime as dt
 import fcntl
+import io
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -102,14 +104,6 @@ def is_present(page, selector: str, timeout: int = 5000) -> bool:
         return True
     except Exception:
         return False
-
-
-def already_captured(out_path: Path) -> bool:
-    """True if today's CSV already exists with at least one data row."""
-    if not out_path.exists():
-        return False
-    with open(out_path, newline="") as f:
-        return sum(1 for _ in f) > 1
 
 
 def goto_roster(page, cfg: dict) -> None:
@@ -276,11 +270,49 @@ def scrape_roster(page, cfg: dict, log: logging.Logger) -> list[list[str]]:
     return [ROSTER_HEADER] + data
 
 
-def write_csv(rows: list[list[str]], out_path: Path, log: logging.Logger) -> None:
+def render_csv(rows: list[list[str]]) -> str:
+    buf = io.StringIO()
+    csv.writer(buf, lineterminator="\n").writerows(rows)
+    return buf.getvalue()
+
+
+def write_csv_if_changed(rows: list[list[str]], out_path: Path, log: logging.Logger) -> bool:
+    """Write the CSV only when its content differs from the existing file, so a
+    published roster is left untouched until something actually changes.
+    Returns True if the file was (re)written."""
+    new_text = render_csv(rows)
+    existing = out_path.read_text(encoding="utf-8") if out_path.exists() else None
+    if existing == new_text:
+        log.info("Roster unchanged for %s; keeping existing file.", out_path.name)
+        return False
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w", newline="") as f:
-        csv.writer(f).writerows(rows)
-    log.info("Wrote roster to %s", out_path)
+    out_path.write_text(new_text, encoding="utf-8")
+    verb = "Updated" if existing is not None else "Wrote"
+    log.info("%s roster %s (%d data rows).", verb, out_path.name, max(len(rows) - 1, 0))
+    return True
+
+
+ROSTER_FILE_RE = re.compile(r"^roster_(\d{4}-\d{2}-\d{2})\.csv$")
+
+
+def prune_old_csvs(out_dir: Path, cfg: dict, log: logging.Logger) -> None:
+    """Delete roster CSVs whose roster date is older than retain_past_days days
+    before today (default 1, i.e. keep yesterday onward)."""
+    retain = int(cfg.get("output", {}).get("retain_past_days", 1))
+    cutoff = dt.date.today() - dt.timedelta(days=retain)
+    if not out_dir.exists():
+        return
+    for f in out_dir.glob("roster_*.csv"):
+        match = ROSTER_FILE_RE.match(f.name)
+        if not match:
+            continue
+        try:
+            file_date = dt.date.fromisoformat(match.group(1))
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            f.unlink()
+            log.info("Pruned old roster %s (roster date before %s).", f.name, cutoff.isoformat())
 
 
 def main() -> int:
@@ -295,10 +327,6 @@ def main() -> int:
     today = dt.date.today().isoformat()
     out_dir = (HERE / cfg["output"]["dir"]).resolve()
     out_path = out_dir / cfg["output"]["filename"].format(date=today)
-
-    if cfg.get("skip_if_already_captured", True) and already_captured(out_path):
-        log.info("Today's roster already captured (%s); skipping.", out_path.name)
-        return 0
 
     lock = acquire_lock(HERE / "ukg_roster.lock")
     if lock is None:
@@ -327,7 +355,8 @@ def main() -> int:
             if not rows:
                 log.warning("Roster appears empty; not overwriting any prior capture.")
                 return 1
-            write_csv(rows, out_path, log)
+            write_csv_if_changed(rows, out_path, log)
+            prune_old_csvs(out_dir, cfg, log)
         except Exception as exc:  # noqa: BLE001 - top-level guard for cron
             log.error("Run failed: %s", exc)
             if cfg.get("debug_screenshots", False):

@@ -27,10 +27,6 @@ headless: true
 # Save a screenshot to ./debug on failure (may contain personal data; gitignored).
 debug_screenshots: true
 
-# Skip the run entirely if today's roster CSV already has data (reduces logins
-# once the roster has been captured for the day).
-skip_if_already_captured: true
-
 selectors:
   username_input: "input[name='username']"
   password_input: "input[type='password']"
@@ -58,7 +54,10 @@ dismiss_selectors:
 
 output:
   dir: "./output"
-  filename: "roster_{date}.csv"  # {date} -> YYYY-MM-DD of the run
+  filename: "roster_{date}.csv"  # {date} -> YYYY-MM-DD of the roster being captured
+  # Delete roster CSVs whose date is older than this many days before today.
+  # 1 keeps yesterday onward; past days drop off automatically.
+  retain_past_days: 1
 
 timeouts:
   navigation_ms: 30000
