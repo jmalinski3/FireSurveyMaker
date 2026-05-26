@@ -1,0 +1,69 @@
+PASTE THIS INTO A NEW CLAUDE CODE SESSION TO RESUME THE PROJECT
+===============================================================
+
+Context: I'm building a UKG Telestaff Cloud roster scraper for the City of
+Naperville Fire Department. Here's the full picture so you're caught up.
+
+WHAT IT IS
+- A Python + Playwright script that logs into UKG Telestaff Cloud, scrapes the
+  daily fire-department roster, and exports it to CSV. Goal: publish upcoming
+  shifts to our member website so people can plan ahead.
+
+WHERE THE CODE LIVES
+- Git repo: jmalinski3/FireSurveyMaker, branch
+  claude/ukg-roster-export-security-SHz4g, in the subfolder ukg-roster/.
+  (FireSurveyMaker is a WordPress plugin; this scraper is a self-contained tool
+  living in the ukg-roster/ subdirectory.)
+- Key files: ukg-roster/ukg_roster.py (the scraper), ukg-roster/set_secrets.py
+  (keyring loader), ukg-roster/config.example.yaml (template; real config.yaml
+  is gitignored), ukg-roster/crontab.example.
+- Deployed on an always-on Arch Linux box called "EBC" at /home/jim/ukg-roster
+  (a COPY of the files, not a git checkout). The repo itself is cloned at
+  /home/jim/FireSurveyMaker. Files are updated on EBC via:
+    git -C ~/FireSurveyMaker show origin/<branch>:ukg-roster/ukg_roster.py > ~/ukg-roster/ukg_roster.py
+
+HOW IT WORKS
+- Auth: secrets (username, password, TOTP seed) are in the OS keyring under
+  service "ukg-roster". The script generates TOTP codes itself (pyotp), so MFA
+  is fully automated/headless. A persistent browser profile (./profile) holds
+  Telestaff's 7-day "remember this device" cookie, so MFA is rarely triggered.
+- Login flow is 3-step Telestaff: /telestaff/login (user+pass) ->
+  /telestaff/mfa (click "Continue", #continueButton) ->
+  /telestaff/mfa/totpValidation (enter code #mfaVerificationCode, check
+  #mfaTrustDeviceCheck, submit #registerButton). An intermittent
+  /telestaff/checkContactLog interstitial may need dismissing (dismiss_selectors
+  in config; currently a placeholder "button.close", not yet observed).
+- Multi-day: the roster date is encoded in the URL path as d[YYYYMMDD]. Config
+  has roster_url_template with a {date} placeholder; the script loops over today
+  .. today+days_ahead (default 3 => 4 CSVs). It verifies the scraped page's date
+  matches the requested date before writing.
+- The roster is NOT an HTML table — it's a nested treegrid (#rosterFixedContent:
+  date > battalion > shift > station > unit > li.idPosition). Extraction is a
+  page.evaluate() DOM walk producing 14 columns: date, shift, station, unit,
+  position, name, person_id, job_title, work_code, status, record_type, start,
+  end, duration. IMPORTANT: those <li> rows have no layout box, so Playwright
+  visibility checks fail on them — readiness is checked with state="attached"
+  (is_present helper), not "visible".
+- Output: output/roster_<date>.csv. Writes are CHANGE-AWARE (only rewrite a
+  day's file when content differs). Retention deletes CSVs older than
+  retain_past_days (default 1 => keep yesterday onward).
+
+STATUS: WORKING END TO END
+- Confirmed: login + MFA + 4-day capture (today Gold -> Black -> Red -> Gold)
+  all produce correct per-day CSVs. Change-aware and retention verified.
+
+ENVIRONMENT QUIRKS
+- EBC is Arch; Playwright uses an Ubuntu fallback Chromium build (harmless
+  warning). Headful mode requires running from the EBC desktop (X11), not SSH.
+
+TODO / NEXT STEPS
+- Set up cron scheduling (crontab.example is the starting point). Decide
+  cadence (nightly vs every few hours; change-aware makes frequent runs cheap).
+- Capture the real contact-log dismiss selector if/when that popup appears.
+- Optionally fold the working Telestaff selector/URL values into
+  config.example.yaml as reference defaults.
+- Eventually: pipeline to publish the CSVs to the member website.
+
+Please read ukg-roster/ukg_roster.py and ukg-roster/config.example.yaml in the
+repo before making changes, and keep developing on branch
+claude/ukg-roster-export-security-SHz4g.

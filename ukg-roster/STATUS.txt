@@ -1,0 +1,87 @@
+UKG TELESTAFF ROSTER SCRAPER — STATUS & QUICK START
+====================================================
+Last updated: 2026-05-25
+
+WHAT IT DOES
+------------
+Logs into UKG Telestaff Cloud (City of Naperville FD), scrapes the daily
+roster for TODAY plus the NEXT 3 DAYS, and writes one CSV per day. Built to
+run unattended (eventually from cron) on the always-on EBC box.
+
+WHERE IT LIVES
+--------------
+Working copy you run:        /home/jim/ukg-roster/
+  - ukg_roster.py            the scraper
+  - config.yaml              your settings (URLs, selectors)  [NOT in git]
+  - set_secrets.py           one-time secret loader
+  - .venv/                   the Python virtual environment
+  - profile/                 persistent browser profile (holds the 7-day
+                             "remember this device" cookie)            [private]
+  - output/                  the CSV files land here
+  - ukg_roster.log           run log
+  - debug/                   failure screenshots (only on errors)
+
+Source of truth (git):       /home/jim/FireSurveyMaker/   (the cloned repo)
+  - Repo:   jmalinski3/FireSurveyMaker
+  - Branch: claude/ukg-roster-export-security-SHz4g
+  - Path:   ukg-roster/  (the same files, version-controlled)
+  NOTE: /home/jim/ukg-roster is a COPY, not a git checkout. To update it,
+  pull in the repo and copy the file over (see UPDATING below).
+
+HOW TO LAUNCH (new terminal)
+----------------------------
+    cd ~/ukg-roster
+    source .venv/bin/activate
+    python ukg_roster.py
+
+  - Runs headless (no screen needed) — fine over SSH.
+  - MFA is handled automatically: it generates the 6-digit code from the
+    stored seed, so you do NOT need to be present. The saved device-trust
+    cookie means MFA is usually skipped entirely (~weekly at most).
+  - Add --headful ONLY if you want to watch it, and ONLY from the EBC
+    desktop session (RustDesk), never over SSH (SSH has no display).
+
+WHERE THE CSVs LIVE
+-------------------
+    /home/jim/ukg-roster/output/roster_<YYYY-MM-DD>.csv
+
+  One file per captured day (today + next 3 = 4 files). Columns:
+    date, shift, station, unit, position, name, person_id, job_title,
+    work_code, status, record_type, start, end, duration
+
+BEHAVIOR TO KNOW
+----------------
+  - Change-aware: a day's CSV is only rewritten when the roster actually
+    changed. The log says "Updated roster ..." or "Roster unchanged ...".
+  - Retention: CSVs older than yesterday are auto-deleted (retain_past_days: 1
+    in config.yaml). So you always keep yesterday + today + the next 3 days.
+  - Safe by date: if the page ever shows the wrong day, it logs a warning and
+    skips writing rather than save bad data under the wrong filename.
+
+SECRETS
+-------
+  Stored in the OS keyring under service "ukg-roster":
+    username, password, totp_secret
+  To change them, re-run:   python set_secrets.py
+
+UPDATING THE CODE (when Claude pushes a change)
+-----------------------------------------------
+    cd ~/FireSurveyMaker
+    git fetch origin claude/ukg-roster-export-security-SHz4g
+    git -C ~/FireSurveyMaker show \
+      origin/claude/ukg-roster-export-security-SHz4g:ukg-roster/ukg_roster.py \
+      > ~/ukg-roster/ukg_roster.py
+  (Do NOT switch branches in ~/FireSurveyMaker — it has other in-progress work.)
+
+NOT DONE YET / KNOWN NOTES
+--------------------------
+  - Cron scheduling: not set up. Runs are manual for now. (crontab.example
+    in the repo is a starting point.)
+  - Contact-log popup: an intermittent /telestaff/checkContactLog page can
+    appear after login. The dismiss selector is a placeholder ("button.close")
+    and hasn't been needed yet. If a run stalls on it, capture that page's
+    close-button HTML so the real selector can be added.
+  - EBC is Arch Linux; Playwright prints a harmless "Ubuntu fallback build"
+    warning for Chromium. Not a problem.
+  - End goal: publish these CSVs to the member website so people can plan
+    ahead for upcoming shifts.
