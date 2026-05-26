@@ -106,16 +106,22 @@ def is_present(page, selector: str, timeout: int = 5000) -> bool:
         return False
 
 
-def goto_roster(page, cfg: dict) -> None:
+def roster_url_for(cfg: dict, day: dt.date) -> str:
+    """Build the roster URL for a specific date. roster_url_template carries a
+    {date} placeholder that is filled with the YYYYMMDD the page path expects."""
+    return cfg["roster_url_template"].replace("{date}", day.strftime("%Y%m%d"))
+
+
+def goto_roster(page, cfg: dict, url: str) -> None:
     page.goto(
-        cfg["roster_url"],
+        url,
         wait_until="domcontentloaded",
         timeout=cfg["timeouts"]["navigation_ms"],
     )
 
 
-def reach_roster(page, cfg: dict, log: logging.Logger) -> None:
-    """Navigate to the roster, dismissing any post-login interstitials first.
+def reach_roster(page, cfg: dict, log: logging.Logger, url: str) -> None:
+    """Navigate to a roster URL, dismissing any post-login interstitials first.
 
     UKG Telestaff sometimes redirects a fresh login through a "contact log"
     page (/telestaff/checkContactLog) that must be closed before the roster
@@ -126,7 +132,7 @@ def reach_roster(page, cfg: dict, log: logging.Logger) -> None:
     el_to = cfg["timeouts"]["element_ms"]
     dismiss = cfg.get("dismiss_selectors") or []
     for attempt in range(3):
-        goto_roster(page, cfg)
+        goto_roster(page, cfg, url)
         if is_present(page, sel["roster_ready_marker"], timeout=el_to):
             return
         dismissed = False
@@ -149,7 +155,7 @@ def reach_roster(page, cfg: dict, log: logging.Logger) -> None:
     # Final readiness is enforced by scrape_roster's wait_for_selector.
 
 
-def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> None:
+def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger, url: str) -> None:
     sel = cfg["selectors"]
     el_to = cfg["timeouts"]["element_ms"]
 
@@ -206,7 +212,7 @@ def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> Non
     else:
         log.info("No TOTP prompt (device still trusted or already authenticated).")
 
-    reach_roster(page, cfg, log)
+    reach_roster(page, cfg, log, url)
 
 
 ROSTER_HEADER = [
@@ -315,6 +321,41 @@ def prune_old_csvs(out_dir: Path, cfg: dict, log: logging.Logger) -> None:
             log.info("Pruned old roster %s (roster date before %s).", f.name, cutoff.isoformat())
 
 
+def save_debug_screenshot(page, cfg: dict, log: logging.Logger, tag: str) -> None:
+    if not cfg.get("debug_screenshots", False):
+        return
+    debug_dir = (HERE / "debug").resolve()
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    shot = debug_dir / f"fail_{tag}_{dt.datetime.now():%H%M%S}.png"
+    try:
+        page.screenshot(path=str(shot))
+        log.error("Saved debug screenshot: %s", shot)
+    except Exception:
+        pass
+
+
+def capture_day(page, cfg: dict, log: logging.Logger, day: dt.date, out_dir: Path) -> bool:
+    """Scrape one date's roster and write it (change-aware). Returns True on a
+    clean capture. A wrong-date page is treated as a failure so we never write
+    one day's roster under another day's filename."""
+    ymd = day.isoformat()
+    out_path = out_dir / cfg["output"]["filename"].format(date=ymd)
+    reach_roster(page, cfg, log, roster_url_for(cfg, day))
+    rows = scrape_roster(page, cfg, log)
+    if not rows:
+        log.warning("Roster empty for %s; leaving any existing file untouched.", ymd)
+        return False
+    scraped_date = rows[1][0] if len(rows) > 1 else ""
+    if scraped_date and scraped_date != ymd:
+        log.warning(
+            "Requested %s but the page shows %s; skipping write to avoid bad data.",
+            ymd, scraped_date,
+        )
+        return False
+    write_csv_if_changed(rows, out_path, log)
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Grab UKG roster and export to CSV.")
     parser.add_argument("--config", default=str(HERE / "config.yaml"))
@@ -324,9 +365,10 @@ def main() -> int:
     cfg = load_config(Path(args.config))
     log = build_logger(HERE / "ukg_roster.log")
 
-    today = dt.date.today().isoformat()
     out_dir = (HERE / cfg["output"]["dir"]).resolve()
-    out_path = out_dir / cfg["output"]["filename"].format(date=today)
+    today = dt.date.today()
+    days_ahead = int(cfg.get("days_ahead", 3))
+    targets = [today + dt.timedelta(days=i) for i in range(days_ahead + 1)]
 
     lock = acquire_lock(HERE / "ukg_roster.lock")
     if lock is None:
@@ -343,35 +385,36 @@ def main() -> int:
     profile_dir.mkdir(parents=True, exist_ok=True)
     headless = not args.headful and cfg.get("headless", True)
 
+    failures = 0
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir), headless=headless
         )
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         try:
-            goto_roster(page, cfg)
-            ensure_logged_in(page, cfg, secrets, log)
-            rows = scrape_roster(page, cfg, log)
-            if not rows:
-                log.warning("Roster appears empty; not overwriting any prior capture.")
-                return 1
-            write_csv_if_changed(rows, out_path, log)
-            prune_old_csvs(out_dir, cfg, log)
-        except Exception as exc:  # noqa: BLE001 - top-level guard for cron
-            log.error("Run failed: %s", exc)
-            if cfg.get("debug_screenshots", False):
-                debug_dir = (HERE / "debug").resolve()
-                debug_dir.mkdir(parents=True, exist_ok=True)
-                shot = debug_dir / f"fail_{today}_{dt.datetime.now():%H%M%S}.png"
+            login_url = roster_url_for(cfg, today)
+            goto_roster(page, cfg, login_url)
+            ensure_logged_in(page, cfg, secrets, log, login_url)
+
+            for day in targets:
                 try:
-                    page.screenshot(path=str(shot))
-                    log.error("Saved debug screenshot: %s", shot)
-                except Exception:
-                    pass
+                    if not capture_day(page, cfg, log, day, out_dir):
+                        failures += 1
+                except Exception as exc:  # noqa: BLE001 - one day must not sink the rest
+                    failures += 1
+                    log.error("Capture failed for %s: %s", day.isoformat(), exc)
+                    save_debug_screenshot(page, cfg, log, day.isoformat())
+
+            prune_old_csvs(out_dir, cfg, log)
+        except Exception as exc:  # noqa: BLE001 - login/navigation guard for cron
+            log.error("Run failed before capture: %s", exc)
+            save_debug_screenshot(page, cfg, log, today.isoformat())
             return 1
         finally:
             ctx.close()  # persists cookies, including the 7-day trust cookie
-    return 0
+
+    log.info("Captured %d of %d days.", len(targets) - failures, len(targets))
+    return 0 if failures < len(targets) else 1
 
 
 if __name__ == "__main__":

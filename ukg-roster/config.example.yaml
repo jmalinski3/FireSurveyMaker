@@ -14,8 +14,17 @@
 #   https://<tenant>-tsc.prd.mykronos.com/telestaff/login
 login_url: "https://CHANGEME.ukg.net/"
 
-# Direct URL to your schedule/roster view once logged in.
-roster_url: "https://CHANGEME.ukg.net/your/roster/path"
+# Roster URL with the date as a {date} placeholder (YYYYMMDD). The script fills
+# {date} in for each day it captures. To find this: open your roster, click the
+# "next day" arrow, and copy the address bar - the date sits in the path. Then
+# replace that date with {date}, keeping all the other query parameters as-is.
+# UKG Telestaff Cloud example (note %5B/%5D are encoded [ ] and %7B%7D is {}):
+#   https://<tenant>-tsc.prd.mykronos.com/telestaff/roster/d%5B{date}%5D?rosterViewId=15_1&dynamicDateOffSet=1&collapsedStateChanges=%7B%7D&refresh=true
+roster_url_template: "https://CHANGEME.ukg.net/your/roster/d%5B{date}%5D?...&refresh=true"
+
+# How many days AHEAD of today to also capture. 3 -> today + next 3 days
+# (4 files). Each is saved as roster_<that date>.csv.
+days_ahead: 3
 
 # Persistent browser profile. Stores cookies including the "remember this
 # device for 7 days" trust cookie, so TOTP is only needed ~weekly. Keep private.
