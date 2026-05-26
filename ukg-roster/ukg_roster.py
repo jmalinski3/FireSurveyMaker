@@ -117,19 +117,39 @@ def ensure_logged_in(page, cfg: dict, secrets: dict, log: logging.Logger) -> Non
         log.info("Session still valid; roster loaded without logging in.")
         return
 
+    mfa_continue = sel.get("mfa_continue_button")
+
     if is_visible(page, sel["password_input"], timeout=el_to):
         log.info("Login form detected; submitting credentials.")
         if is_visible(page, sel["username_input"], timeout=2000):
             page.fill(sel["username_input"], secrets["username"])
         page.fill(sel["password_input"], secrets["password"])
         page.click(sel["submit_button"])
-        # Whichever appears first: the TOTP prompt or the roster page.
+        # After submit we may land on an MFA method-selection page, the TOTP
+        # code prompt, or straight on the roster (device still trusted).
+        wait_targets = [sel["totp_input"], sel["roster_ready_marker"]]
+        if mfa_continue:
+            wait_targets.append(mfa_continue)
         try:
-            page.wait_for_selector(
-                f"{sel['totp_input']}, {sel['roster_ready_marker']}", timeout=el_to
-            )
+            page.wait_for_selector(", ".join(wait_targets), timeout=el_to)
         except PWTimeout:
-            log.warning("Neither TOTP prompt nor roster appeared after login submit.")
+            log.warning("No MFA, TOTP, or roster page appeared after login submit.")
+
+    # Some flows (e.g. UKG Telestaff) show an MFA method picker with the
+    # authenticator app preselected and a "Continue" button before the code
+    # entry page. Advance past it. Guard on the code field NOT being present so
+    # this is skipped when continue/submit share a selector on the code page.
+    if (
+        mfa_continue
+        and is_visible(page, mfa_continue, timeout=3000)
+        and not is_visible(page, sel["totp_input"], timeout=500)
+    ):
+        log.info("MFA method page detected; clicking continue to reach code entry.")
+        page.click(mfa_continue)
+        try:
+            page.wait_for_selector(sel["totp_input"], timeout=el_to)
+        except PWTimeout:
+            log.warning("TOTP code field did not appear after MFA continue.")
 
     if is_visible(page, sel["totp_input"], timeout=3000):
         log.info("TOTP prompt detected; generating one-time code.")

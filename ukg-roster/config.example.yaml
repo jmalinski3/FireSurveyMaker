@@ -10,6 +10,8 @@
 # your actual UKG instance.
 
 # The page you land on when not logged in (where username/password is entered).
+# UKG Telestaff Cloud example:
+#   https://<tenant>-tsc.prd.mykronos.com/telestaff/login
 login_url: "https://CHANGEME.ukg.net/"
 
 # Direct URL to your schedule/roster view once logged in.
@@ -33,6 +35,11 @@ selectors:
   username_input: "input[name='username']"
   password_input: "input[type='password']"
   submit_button: "button[type='submit']"
+  # Optional. Some flows (UKG Telestaff) put an MFA method-selection page with a
+  # "Continue" button between the password page and the code-entry page. Set the
+  # selector for that Continue button here. Leave commented/blank if your login
+  # goes straight from password to the code field.
+  mfa_continue_button: "button[type='submit']"
   totp_input: "input[name='otp']"
   remember_device_checkbox: "input[type='checkbox']"
   totp_submit_button: "button[type='submit']"
