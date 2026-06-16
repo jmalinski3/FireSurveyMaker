@@ -34,7 +34,7 @@ class FSM_Template {
 		}
 		if ( $slug = get_query_var( 'fsm_survey' ) ) {
 			$GLOBALS['fsm_current_survey'] = FSM_Survey::get_by_slug( sanitize_title( $slug ) );
-			return FSM_PLUGIN_DIR . 'frontend/views/survey-single.php';
+			return FSM_PLUGIN_DIR . 'frontend/views/survey-embed.php';
 		}
 		return $template;
 	}

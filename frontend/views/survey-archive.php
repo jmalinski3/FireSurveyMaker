@@ -11,7 +11,7 @@ $responded_ids = is_user_logged_in()
 	<div class="fsm-container">
 		<h1><?php esc_html_e( 'Surveys', 'fire-survey-maker' ); ?></h1>
 
-		<?php if ( FSM_Capabilities::current_user_can() ) : ?>
+		<?php if ( current_user_can( 'manage_surveys' ) ) : ?>
 			<p>
 				<a href="<?php echo esc_url( home_url( '/surveys/create/' ) ); ?>" class="fsm-btn fsm-btn--primary">
 					<?php esc_html_e( '+ Create Survey', 'fire-survey-maker' ); ?>

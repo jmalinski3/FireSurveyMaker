@@ -16,7 +16,7 @@
 							<span class="description"><?php esc_html_e( 'Always granted', 'fire-survey-maker' ); ?></span>
 						<?php else : ?>
 							<input type="checkbox" name="fsm_roles[<?php echo esc_attr( $slug ); ?>]" value="1"
-								<?php checked( in_array( $slug, $roles_with_cap, true ) ); ?>>
+								<?php checked( (bool) get_role( $slug )?->has_cap( 'manage_surveys' ) ); ?>>
 						<?php endif; ?>
 					</td>
 				</tr>

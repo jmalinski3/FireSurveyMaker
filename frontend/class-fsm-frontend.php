@@ -23,9 +23,16 @@ class FSM_Frontend {
 		);
 
 		wp_enqueue_script(
+			'fsm-question-builder',
+			FSM_PLUGIN_URL . 'assets/js/question-builder.js',
+			array(),
+			FSM_VERSION,
+			true
+		);
+		wp_enqueue_script(
 			'fsm-survey-builder-frontend',
 			FSM_PLUGIN_URL . 'frontend/js/survey-builder-frontend.js',
-			array(),
+			array( 'fsm-question-builder' ),
 			FSM_VERSION,
 			true
 		);
@@ -47,7 +54,7 @@ class FSM_Frontend {
 				'nonce'      => wp_create_nonce( 'wp_rest' ),
 				'loginUrl'   => wp_login_url( get_permalink() ),
 				'isLoggedIn' => is_user_logged_in(),
-				'canManage'  => FSM_Capabilities::current_user_can(),
+				'canManage'  => current_user_can( 'manage_surveys' ),
 				'i18n'       => array(
 					'submitting'       => __( 'Submitting…', 'fire-survey-maker' ),
 					'thankYou'         => __( 'Thank you for your response!', 'fire-survey-maker' ),
@@ -91,6 +98,7 @@ class FSM_Frontend {
 			return '<p>' . esc_html__( 'Survey not found.', 'fire-survey-maker' ) . '</p>';
 		}
 		$questions = FSM_Question::get_by_survey( $survey_id );
+		$is_embed  = true;
 		ob_start();
 		include FSM_PLUGIN_DIR . 'frontend/views/survey-embed.php';
 		return ob_get_clean();

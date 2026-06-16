@@ -1,9 +1,27 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 /**
- * Reusable survey form embed — used by the single page, block, and widget.
- * Expects $survey and $questions to be in scope.
+ * Survey form template — used by the single page, block, and widget.
+ *
+ * When called via FSM_Frontend::render_survey_embed() (block/widget context),
+ * $survey, $questions, and $is_embed = true are passed in scope.
+ *
+ * When loaded directly as a single-page template, $survey is read from the
+ * fsm_current_survey global and the page chrome (header/main/footer) is emitted.
  */
+
+$is_embed = ! empty( $is_embed );
+
+if ( ! $is_embed ) {
+	$survey = $GLOBALS['fsm_current_survey'] ?? null;
+	if ( ! $survey ) {
+		wp_die( esc_html__( 'Survey not found.', 'fire-survey-maker' ), '', array( 'response' => 404 ) );
+	}
+	$questions = FSM_Question::get_by_survey( (int) $survey['id'] );
+	get_header();
+	echo '<main class="fsm-page fsm-single"><div class="fsm-container">';
+}
+
 $is_open   = FSM_Survey::is_accepting_responses( $survey );
 $responded = is_user_logged_in() && FSM_Response::has_responded( (int) $survey['id'], get_current_user_id() );
 ?>
@@ -80,3 +98,8 @@ $responded = is_user_logged_in() && FSM_Response::has_responded( (int) $survey['
 		</form>
 	<?php endif; ?>
 </div>
+<?php
+if ( ! $is_embed ) {
+	echo '</div></main>';
+	get_footer();
+}

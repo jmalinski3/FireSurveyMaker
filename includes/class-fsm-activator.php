@@ -7,7 +7,10 @@ class FSM_Activator {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( FSM_Database::get_schema() );
 		update_option( 'fsm_db_version', FSM_Database::DB_VERSION );
-		FSM_Capabilities::grant_to_role( 'administrator' );
+		$admin_role = get_role( 'administrator' );
+		if ( $admin_role ) {
+			$admin_role->add_cap( 'manage_surveys' );
+		}
 		flush_rewrite_rules();
 	}
 
